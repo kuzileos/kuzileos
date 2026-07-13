@@ -153,6 +153,8 @@ main { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="nav-item" onclick="showSection('projects',this)"><i class="fas fa-diagram-project"></i> Projects</div>
             <div class="nav-item" onclick="showSection('tasks',this)"><i class="fas fa-list-check"></i> All Tasks</div>
             <div class="nav-item" onclick="showSection('bugs',this)"><i class="fas fa-bug"></i> Bug Tracker</div>
+            <div class="nav-section">Analytics</div>
+            <div class="nav-item" onclick="showSection('analytics',this)"><i class="fas fa-chart-line"></i> Analytics</div>
         </aside>
         <main>
             <div class="section active" id="sec-overview"></div>
@@ -165,6 +167,7 @@ main { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="section" id="sec-tasks"></div>
             <div class="section" id="sec-bugs"></div>
             <div class="section" id="sec-project-detail"></div>
+            <div class="section" id="sec-analytics"></div>
         </main>
     </div>
 </div>
@@ -227,6 +230,7 @@ function showSection(id,el){ closeSidebar();
     if(id==='projects')loadProjects();
     if(id==='tasks')loadAllTasks();
     if(id==='bugs')loadAllBugs();
+    if(id==='analytics')loadAnalytics();
 }
 
 async function loadClients(){
@@ -919,6 +923,201 @@ function toggleSidebar(){
 function closeSidebar(){
     document.getElementById('kzSidebar').classList.remove('open');
     document.getElementById('mobOverlay').classList.remove('open');
+}
+
+
+let clientSb = null;
+
+async function loadAnalytics() {
+    document.getElementById('sec-analytics').innerHTML = `
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Analytics Platform</h2>
+        <p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">KuzileOS insights + per-client live data</p>
+    </div>
+    <div id="analyticsContent"><div class="card p-6" style="text-align:center;color:rgba(255,255,255,0.2);">Loading...</div></div>`;
+    await renderAnalytics();
+}
+
+async function renderAnalytics(selectedClientId=null) {
+    // Layer 1 — KuzileOS own data
+    const [hcRes, incRes, tixRes, projRes] = await Promise.all([
+        window.sb.from('kz_health_checks').select('status,checked_at,client_id').order('checked_at',{ascending:false}).limit(500),
+        window.sb.from('kz_incidents').select('status,severity,created_at,client_id').order('created_at',{ascending:false}),
+        window.sb.from('kz_tickets').select('status,priority,created_at,client_id').order('created_at',{ascending:false}),
+        window.sb.from('kz_projects').select('status,client_id').order('created_at',{ascending:false})
+    ]);
+
+    const hc = hcRes.data||[];
+    const incidents = incRes.data||[];
+    const tickets = tixRes.data||[];
+    const projects = projRes.data||[];
+
+    // Uptime per client
+    const uptimeByClient = {};
+    allClients.forEach(c => {
+        const clientHc = hc.filter(h=>h.client_id===c.id);
+        const uptime = clientHc.length>0?Math.round((clientHc.filter(h=>h.status==='online').length/clientHc.length)*100):null;
+        uptimeByClient[c.id] = {name:c.name, uptime, checks:clientHc.length};
+    });
+
+    // Incidents last 30 days
+    const thirtyDaysAgo = new Date(Date.now()-30*24*60*60*1000).toISOString();
+    const recentInc = incidents.filter(i=>i.created_at>=thirtyDaysAgo);
+    const recentTix = tickets.filter(t=>t.created_at>=thirtyDaysAgo);
+
+    // Build client selector
+    const clientOptions = allClients.filter(c=>c.supabase_anon_key&&c.supabase_project_id).map(c=>
+        `<option value="${c.id}" ${c.id===selectedClientId?'selected':''}>${c.name}</option>`
+    ).join('');
+
+    let clientAnalyticsHTML = '';
+    if (selectedClientId) {
+        const client = allClients.find(c=>c.id===selectedClientId);
+        if (client&&client.supabase_anon_key&&client.supabase_project_id) {
+            clientAnalyticsHTML = await fetchClientAnalytics(client);
+        }
+    }
+
+    document.getElementById('analyticsContent').innerHTML = `
+    <div class="stats-grid" style="margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Health Checks</p><p class="num">${hc.length}</p></div>
+        <div class="stat-card"><p class="lbl">Incidents (30d)</p><p class="num" style="color:#f87171;">${recentInc.length}</p></div>
+        <div class="stat-card"><p class="lbl">Tickets (30d)</p><p class="num" style="color:#fbbf24;">${recentTix.length}</p></div>
+        <div class="stat-card"><p class="lbl">Active Projects</p><p class="num" style="color:#34d399;">${projects.filter(p=>p.status==='active').length}</p></div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:1.5rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-heart-pulse" style="color:#a5b4fc;"></i> Uptime by Client</div>
+            ${Object.values(uptimeByClient).map(c=>`
+            <div style="margin-bottom:0.75rem;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;">
+                    <span style="font-size:0.85rem;">${c.name}</span>
+                    <span style="font-weight:700;color:${c.uptime>=90?'#34d399':c.uptime>=70?'#fbbf24':'#f87171'};">${c.uptime!==null?c.uptime+'%':'No data'}</span>
+                </div>
+                <div style="background:rgba(255,255,255,0.06);border-radius:4px;height:6px;overflow:hidden;">
+                    <div style="background:${c.uptime>=90?'#34d399':c.uptime>=70?'#fbbf24':'#f87171'};height:100%;width:${c.uptime||0}%;border-radius:4px;"></div>
+                </div>
+                <p style="font-size:0.7rem;color:rgba(255,255,255,0.25);margin-top:0.2rem;">${c.checks} checks recorded</p>
+            </div>`).join('')}
+        </div>
+
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-triangle-exclamation" style="color:#f87171;"></i> Incident Severity Breakdown</div>
+            ${['critical','high','medium','low'].map(sev=>{
+                const count = incidents.filter(i=>i.severity===sev).length;
+                const pct = incidents.length>0?Math.round((count/incidents.length)*100):0;
+                return `<div style="margin-bottom:0.75rem;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;">
+                        <span class="badge badge-${sev==='critical'||sev==='high'?'red':sev==='medium'?'yellow':'blue'}">${sev}</span>
+                        <span style="font-weight:700;">${count} <span style="color:rgba(255,255,255,0.3);font-weight:400;">(${pct}%)</span></span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.06);border-radius:4px;height:5px;overflow:hidden;">
+                        <div style="background:${sev==='critical'||sev==='high'?'#f87171':sev==='medium'?'#fbbf24':'#a5b4fc'};height:100%;width:${pct}%;border-radius:4px;"></div>
+                    </div>
+                </div>`;
+            }).join('')}
+            <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.06);">
+                <div style="display:flex;justify-content:space-between;font-size:0.82rem;">
+                    <span style="color:rgba(255,255,255,0.4);">Open tickets</span><span style="color:#fbbf24;">${tickets.filter(t=>t.status==='open').length}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-top:0.4rem;">
+                    <span style="color:rgba(255,255,255,0.4);">Resolved tickets</span><span style="color:#34d399;">${tickets.filter(t=>t.status==='resolved').length}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card p-5 mb-6">
+        <div class="section-header"><i class="fas fa-chart-bar" style="color:#a5b4fc;"></i> Per-Client Live Analytics</div>
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <select id="clientAnalyticsSelect" style="width:auto;" onchange="renderAnalytics(this.value||null)">
+                <option value="">Select a client...</option>${clientOptions}
+            </select>
+            <p style="font-size:0.78rem;color:rgba(255,255,255,0.3);">Connects live to the client's Supabase instance</p>
+        </div>
+        ${selectedClientId?clientAnalyticsHTML:'<div style="text-align:center;padding:2rem;color:rgba(255,255,255,0.2);">Select a client above to view their live platform data</div>'}
+    </div>`;
+}
+
+async function fetchClientAnalytics(client) {
+    try {
+        const url = 'https://'+client.supabase_project_id+'.supabase.co';
+        const sb2 = supabase.createClient(url, client.supabase_anon_key);
+        let html = '';
+
+        if (client.platform_type==='lota') {
+            const [mRes,dRes,vRes,qRes,attRes,incRes,compRes] = await Promise.all([
+                sb2.from('lota_members').select('id,status'),
+                sb2.from('lota_drivers').select('id,status'),
+                sb2.from('lota_vehicles').select('id,status'),
+                sb2.from('lota_queue').select('id,status,departed_at').eq('status','departed').gte('departed_at',new Date(Date.now()-30*24*60*60*1000).toISOString()),
+                sb2.from('lota_attendance').select('status,date').gte('date',new Date(Date.now()-7*24*60*60*1000).toISOString().split('T')[0]),
+                sb2.from('lota_incidents').select('id,status'),
+                sb2.from('lota_complaints').select('id,status')
+            ]);
+            const members=mRes.data||[], drivers=dRes.data||[], vehicles=vRes.data||[];
+            const trips=qRes.data||[], att=attRes.data||[], incidents=incRes.data||[], complaints=compRes.data||[];
+            const attRate=att.length>0?Math.round((att.filter(a=>a.status==='present').length/att.length)*100):null;
+            html = `<div class="stats-grid">
+                <div class="stat-card"><p class="lbl">Active Members</p><p class="num">${members.filter(m=>m.status==='active').length}</p></div>
+                <div class="stat-card"><p class="lbl">Active Drivers</p><p class="num">${drivers.filter(d=>d.status==='active').length}</p></div>
+                <div class="stat-card"><p class="lbl">Active Vehicles</p><p class="num">${vehicles.filter(v=>v.status==='active').length}</p></div>
+                <div class="stat-card"><p class="lbl">Trips (30d)</p><p class="num" style="color:#00d4b4;">${trips.length}</p></div>
+                <div class="stat-card"><p class="lbl">Attendance (7d)</p><p class="num" style="color:${attRate>=80?'#34d399':'#fbbf24'};">${attRate!==null?attRate+'%':'—'}</p></div>
+                <div class="stat-card"><p class="lbl">Open Incidents</p><p class="num" style="color:#f87171;">${incidents.filter(i=>i.status==='open').length}</p></div>
+                <div class="stat-card"><p class="lbl">Complaints</p><p class="num" style="color:#fbbf24;">${complaints.length}</p></div>
+            </div>`;
+        } else if (client.platform_type==='educonnect') {
+            const [lRes,attRes,feeRes,discRes,hwRes,assessRes] = await Promise.all([
+                sb2.from('ec_learners').select('id,status'),
+                sb2.from('ec_attendance').select('status,date').gte('date',new Date(Date.now()-7*24*60*60*1000).toISOString().split('T')[0]),
+                sb2.from('ec_fees').select('amount,status'),
+                sb2.from('ec_behaviour_records').select('id,record_type').gte('created_at',new Date(Date.now()-30*24*60*60*1000).toISOString()),
+                sb2.from('ec_homework').select('id,status'),
+                sb2.from('ec_assessments').select('percentage')
+            ]);
+            const learners=lRes.data||[], att=attRes.data||[], fees=feeRes.data||[];
+            const disc=discRes.data||[], hw=hwRes.data||[], assess=assessRes.data||[];
+            const attRate=att.length>0?Math.round((att.filter(a=>a.status==='present').length/att.length)*100):null;
+            const totalFees=fees.reduce((s,f)=>s+parseFloat(f.amount||0),0);
+            const collectedFees=fees.filter(f=>f.status==='paid').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+            const avgMark=assess.length>0?Math.round(assess.reduce((s,a)=>s+parseFloat(a.percentage||0),0)/assess.length):null;
+            html = `<div class="stats-grid">
+                <div class="stat-card"><p class="lbl">Active Learners</p><p class="num">${learners.filter(l=>l.status==='active').length}</p></div>
+                <div class="stat-card"><p class="lbl">Attendance (7d)</p><p class="num" style="color:${attRate>=80?'#34d399':'#fbbf24'};">${attRate!==null?attRate+'%':'—'}</p></div>
+                <div class="stat-card"><p class="lbl">Fee Collection</p><p class="num" style="color:#34d399;">R${collectedFees.toFixed(0)}</p></div>
+                <div class="stat-card"><p class="lbl">Outstanding</p><p class="num" style="color:#f87171;">R${(totalFees-collectedFees).toFixed(0)}</p></div>
+                <div class="stat-card"><p class="lbl">Avg Mark</p><p class="num" style="color:#a5b4fc;">${avgMark!==null?avgMark+'%':'—'}</p></div>
+                <div class="stat-card"><p class="lbl">Incidents (30d)</p><p class="num" style="color:#fbbf24;">${disc.filter(d=>d.record_type!=='award').length}</p></div>
+                <div class="stat-card"><p class="lbl">Active Homework</p><p class="num">${hw.filter(h=>h.status==='active').length}</p></div>
+            </div>`;
+        } else if (client.platform_type==='cordesa') {
+            const [tripRes,taxiRes,assocRes] = await Promise.all([
+                sb2.from('cordesa_trips').select('fee_charged,trip_type,created_at').gte('created_at',new Date(Date.now()-30*24*60*60*1000).toISOString()),
+                sb2.from('cordesa_taxis').select('id,association_code'),
+                sb2.from('associations').select('id,name,code')
+            ]);
+            const trips=tripRes.data||[], taxis=taxiRes.data||[], assocs=assocRes.data||[];
+            const totalFees=trips.reduce((s,t)=>s+parseFloat(t.fee_charged||0),0);
+            const byType={};
+            trips.forEach(t=>{byType[t.trip_type]=(byType[t.trip_type]||0)+1;});
+            html = `<div class="stats-grid">
+                <div class="stat-card"><p class="lbl">Trips (30d)</p><p class="num" style="color:#00c878;">${trips.length}</p></div>
+                <div class="stat-card"><p class="lbl">Revenue (30d)</p><p class="num" style="color:#34d399;">R${totalFees.toFixed(0)}</p></div>
+                <div class="stat-card"><p class="lbl">Total Taxis</p><p class="num">${taxis.length}</p></div>
+                <div class="stat-card"><p class="lbl">Associations</p><p class="num">${assocs.length}</p></div>
+            </div>
+            <div style="margin-top:1rem;"><p style="font-size:0.78rem;color:rgba(255,255,255,0.3);margin-bottom:0.5rem;">Trip Types (30d)</p>
+            ${Object.entries(byType).map(([type,count])=>`<div style="display:flex;justify-content:space-between;padding:0.35rem 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.85rem;"><span>${type}</span><span class="badge badge-blue">${count}</span></div>`).join('') || '<p style="color:rgba(255,255,255,0.2);font-size:0.82rem;">No trips in last 30 days</p>'}
+            </div>`;
+        } else {
+            html = '<p style="color:rgba(255,255,255,0.3);font-size:0.875rem;">No analytics template available for this platform type yet.</p>';
+        }
+        return html;
+    } catch(e) {
+        return `<div style="color:#f87171;font-size:0.85rem;"><i class="fas fa-exclamation-circle"></i> Failed to connect to client platform: ${e.message}</div>`;
+    }
 }
 
 checkSession();
