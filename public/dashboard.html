@@ -912,11 +912,6 @@ async function loadAllBugs() {
 }
 
 
-let activeProject = null;
-let cachedMilestones = [];
-let cachedTasks = [];
-let cachedBugs = [];
-let cachedReleases = [];
 
 async function loadProjects() {
     const { data } = await window.sb.from('kz_projects').select('*,kz_clients(name)').order('created_at',{ascending:false});
