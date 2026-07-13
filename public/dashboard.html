@@ -900,31 +900,6 @@ async function loadAllBugs() {
     </div>`;
 }
 
-
-
-    const { data } = await window.sb.from('kz_bugs').select('*,kz_projects(name)').order('created_at',{ascending:false});
-    const bugs = data||[];
-    document.getElementById('sec-bugs').innerHTML = `
-    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Bug Tracker</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">${bugs.filter(b=>b.status==='open').length} open bugs across all projects</p></div>
-    <div class="stats-grid" style="margin-bottom:1.5rem;">
-        <div class="stat-card"><p class="lbl">Open</p><p class="num" style="color:#f87171;">${bugs.filter(b=>b.status==='open').length}</p></div>
-        <div class="stat-card"><p class="lbl">Critical</p><p class="num" style="color:#f87171;">${bugs.filter(b=>b.severity==='critical').length}</p></div>
-        <div class="stat-card"><p class="lbl">Resolved</p><p class="num" style="color:#34d399;">${bugs.filter(b=>b.status==='resolved').length}</p></div>
-    </div>
-    <div class="card" style="overflow:hidden;">
-        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr;"><span>Bug</span><span>Project</span><span>Severity</span><span>Status</span><span>Reported By</span></div>
-        <div>${bugs.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);">No bugs reported</div>':bugs.map(b=>`
-        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr;">
-            <span style="font-weight:600;">${b.title}</span>
-            <span style="font-size:0.82rem;color:rgba(255,255,255,0.45);">${b.kz_projects?.name||'\u2014'}</span>
-            <span class="badge badge-${b.severity==='critical'||b.severity==='high'?'red':'yellow'}">${b.severity}</span>
-            <span class="badge badge-${b.status==='open'?'red':'green'}">${b.status}</span>
-            <span style="font-size:0.82rem;">${b.reported_by||'\u2014'}</span>
-        </div>`).join('')}
-        </div>
-    </div>`;
-}
-
 checkSession();
 </script>
 </body>
