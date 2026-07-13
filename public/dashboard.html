@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KuzileOS — Managed Services</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://browser.sentry-cdn.com/7.99.0/bundle.min.js" crossorigin="anonymous"></script>
+<script src="sentry-init.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="supabase-init.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #080c14; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e2e8f0; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); } ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.3); border-radius: 3px; }
+
+#loginScreen { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1rem; position:relative; overflow:hidden; background: radial-gradient(ellipse at top, #1a1040 0%, #080c14 60%); }
+#loginScreen .glow { position:absolute; width:500px; height:500px; border-radius:50%; background:radial-gradient(circle,rgba(99,102,241,0.12) 0%,transparent 70%); top:-150px; left:50%; transform:translateX(-50%); pointer-events:none; }
+.login-card { background: rgba(255,255,255,0.04); backdrop-filter: blur(32px); border: 1px solid rgba(99,102,241,0.2); border-radius: 24px; padding: 2.5rem; width:100%; max-width:380px; box-shadow: 0 32px 80px rgba(0,0,0,0.6); position:relative; z-index:1; }
+.login-logo { width:64px; height:64px; background:linear-gradient(135deg,#6366f1,#4f46e5); border-radius:16px; display:flex; align-items:center; justify-content:center; margin:0 auto 1.25rem; box-shadow:0 8px 24px rgba(99,102,241,0.4); }
+.login-card h1 { font-size:1.5rem; font-weight:900; color:#a5b4fc; text-align:center; letter-spacing:1px; }
+.login-card .sub { color:rgba(255,255,255,0.35); font-size:0.82rem; text-align:center; margin-top:0.3rem; margin-bottom:1.75rem; }
+.error-msg { background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.25); color:#f87171; padding:0.7rem 1rem; border-radius:10px; font-size:0.85rem; margin-bottom:1rem; display:none; }
+
+label { color:rgba(99,102,241,0.85); font-size:0.75rem; font-weight:700; display:block; margin-bottom:0.35rem; text-transform:uppercase; letter-spacing:0.06em; }
+input, select, textarea { background: rgba(255,255,255,0.04); border: 1px solid rgba(99,102,241,0.2); border-radius: 10px; color: #e2e8f0; padding: 0.7rem 0.9rem; width: 100%; font-size: 0.9rem; outline: none; transition:all 0.2s; }
+input:focus, select:focus, textarea:focus { border-color: rgba(99,102,241,0.5); background: rgba(99,102,241,0.06); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.25); }
+select option { background:#1a1040; color:#e2e8f0; }
+.field { margin-bottom:1.1rem; }
+
+.btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); border: none; color: white; font-weight: 700; cursor: pointer; border-radius: 10px; padding: 0.75rem 1.25rem; font-size:0.9rem; transition: all 0.2s; box-shadow: 0 4px 15px rgba(99,102,241,0.35); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,0.5); }
+.btn-secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 0.65rem 1.1rem; font-size:0.85rem; transition:all 0.2s; }
+.btn-secondary:hover { border-color: rgba(99,102,241,0.4); color: #a5b4fc; }
+.btn-danger { background: linear-gradient(135deg,#ef4444,#dc2626); border:none; color:white; font-weight:600; cursor:pointer; border-radius:8px; padding:0.4rem 0.8rem; font-size:0.78rem; }
+.btn-success { background: linear-gradient(135deg,#10b981,#059669); border:none; color:white; font-weight:600; cursor:pointer; border-radius:8px; padding:0.4rem 0.8rem; font-size:0.78rem; }
+
+#mainApp { display:none; min-height:100vh; }
+nav { background:rgba(8,12,20,0.95); backdrop-filter:blur(20px); border-bottom:1px solid rgba(99,102,241,0.12); padding:0 1.5rem; height:60px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+.brand { display:flex; align-items:center; gap:0.75rem; }
+.brand .logo { width:36px; height:36px; background:linear-gradient(135deg,#6366f1,#4f46e5); border-radius:10px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(99,102,241,0.4); }
+.brand .name { font-weight:900; color:#a5b4fc; letter-spacing:1px; font-size:1rem; }
+.brand .sub { color:rgba(255,255,255,0.25); font-size:0.72rem; }
+
+.shell { display:flex; min-height:calc(100vh - 60px); }
+aside { width:220px; background:rgba(8,12,20,0.8); border-right:1px solid rgba(99,102,241,0.08); padding:1rem; flex-shrink:0; }
+.nav-item { display:flex; align-items:center; gap:0.75rem; padding:0.65rem 1rem; border-radius:10px; cursor:pointer; font-size:0.875rem; font-weight:500; color:rgba(255,255,255,0.45); transition:all 0.2s; margin-bottom:0.2rem; }
+.nav-item:hover { background:rgba(99,102,241,0.08); color:#a5b4fc; }
+.nav-item.active { background:rgba(99,102,241,0.12); color:#a5b4fc; font-weight:700; border-left:3px solid #6366f1; }
+.nav-item i { width:18px; text-align:center; }
+.nav-section { font-size:0.68rem; font-weight:700; color:rgba(99,102,241,0.4); text-transform:uppercase; letter-spacing:0.08em; padding:0.75rem 1rem 0.3rem; }
+
+main { flex:1; padding:1.5rem; overflow-y:auto; }
+.card { background: rgba(255,255,255,0.03); border: 1px solid rgba(99,102,241,0.1); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+.p-4{padding:1rem;} .p-5{padding:1.25rem;} .p-6{padding:1.5rem;}
+.mb-4{margin-bottom:1rem;} .mb-6{margin-bottom:1.5rem;}
+
+.stat-card { background:rgba(255,255,255,0.03); border:1px solid rgba(99,102,241,0.1); border-radius:14px; padding:1.25rem; transition:all 0.2s; }
+.stat-card:hover { border-color:rgba(99,102,241,0.25); transform:translateY(-2px); }
+.stat-card .num { font-size:2rem; font-weight:900; color:#a5b4fc; }
+.stat-card .lbl { color:rgba(255,255,255,0.3); font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; }
+
+.badge { display:inline-block; padding:0.2rem 0.65rem; border-radius:20px; font-size:0.7rem; font-weight:700; }
+.badge-green { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.2); }
+.badge-red { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.2); }
+.badge-yellow { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.2); }
+.badge-blue { background:rgba(99,102,241,0.15); color:#a5b4fc; border:1px solid rgba(99,102,241,0.2); }
+.badge-gray { background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4); border:1px solid rgba(255,255,255,0.08); }
+
+.table-row { display:grid; padding:0.8rem 1rem; border-bottom:1px solid rgba(255,255,255,0.04); align-items:center; font-size:0.875rem; transition:background 0.15s; }
+.table-row:hover { background:rgba(99,102,241,0.04); }
+.table-head { background:rgba(0,0,0,0.3); border-bottom:1px solid rgba(99,102,241,0.1); font-weight:700; font-size:0.7rem; color:rgba(99,102,241,0.6); text-transform:uppercase; letter-spacing:0.07em; }
+.table-head:hover { background:rgba(0,0,0,0.3); }
+.section-header { font-size:0.95rem; font-weight:700; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; color:#e2e8f0; }
+
+.client-card { background:rgba(255,255,255,0.03); border:1px solid rgba(99,102,241,0.1); border-radius:16px; padding:1.25rem; margin-bottom:1rem; transition:all 0.2s; }
+.client-card:hover { border-color:rgba(99,102,241,0.25); }
+.client-card.online { border-left:4px solid #34d399; }
+.client-card.offline { border-left:4px solid #f87171; }
+.client-card.checking { border-left:4px solid #fbbf24; }
+
+.pulse { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.pulse.green { background:#34d399; box-shadow:0 0 6px #34d399; animation:pulse 2s infinite; }
+.pulse.red { background:#f87171; }
+.pulse.yellow { background:#fbbf24; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+.section { display:none; }
+.section.active { display:block; animation:fadeIn 0.25s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:translateY(0);} }
+
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+.three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+
+@media(max-width:700px) { .two-col,.three-col { grid-template-columns:1fr; } aside { display:none; } }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+    <div class="glow"></div>
+    <div class="login-card">
+        <div class="login-logo"><i class="fas fa-shield-halved" style="color:white;font-size:1.4rem;"></i></div>
+        <h1>KuzileOS</h1>
+        <p class="sub">Managed Services Dashboard</p>
+        <div id="errorMsg" class="error-msg"></div>
+        <div class="field"><label>Username</label><input id="loginUsername" placeholder="Username"></div>
+        <div class="field"><label>PIN</label><input id="loginPin" placeholder="PIN" type="password" inputmode="numeric"></div>
+        <button onclick="kzLogin()" class="btn-primary" style="width:100%;"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+    </div>
+</div>
+
+<div id="mainApp">
+    <nav>
+        <div class="brand">
+            <div class="logo"><i class="fas fa-shield-halved" style="color:white;font-size:0.95rem;"></i></div>
+            <div><div class="name">KuzileOS</div><div class="sub">by Kuzile Advisory</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+            <span id="navUser" style="color:rgba(255,255,255,0.5);font-size:0.82rem;"></span>
+            <div id="lastRefresh" style="color:rgba(255,255,255,0.25);font-size:0.75rem;"></div>
+            <button onclick="refreshAll()" class="btn-secondary" style="padding:0.4rem 0.85rem;font-size:0.8rem;"><i class="fas fa-rotate"></i> Refresh</button>
+            <button onclick="kzLogout()" class="btn-secondary" style="padding:0.4rem 0.85rem;font-size:0.8rem;"><i class="fas fa-sign-out-alt"></i></button>
+        </div>
+    </nav>
+    <div class="shell">
+        <aside>
+            <div class="nav-section">Overview</div>
+            <div class="nav-item active" onclick="showSection('overview',this)"><i class="fas fa-tachometer-alt"></i> Dashboard</div>
+            <div class="nav-section">Clients</div>
+            <div class="nav-item" onclick="showSection('clients',this)"><i class="fas fa-building"></i> All Clients</div>
+            <div class="nav-item" onclick="showSection('health',this)"><i class="fas fa-heart-pulse"></i> Health Checks</div>
+            <div class="nav-section">Operations</div>
+            <div class="nav-item" onclick="showSection('incidents',this)"><i class="fas fa-triangle-exclamation"></i> Incidents</div>
+            <div class="nav-item" onclick="showSection('tickets',this)"><i class="fas fa-ticket"></i> Support Tickets</div>
+            <div class="nav-section">System</div>
+            <div class="nav-item" onclick="showSection('addclient',this)"><i class="fas fa-plus"></i> Add Client</div>
+        </aside>
+        <main>
+            <div class="section active" id="sec-overview"></div>
+            <div class="section" id="sec-clients"></div>
+            <div class="section" id="sec-health"></div>
+            <div class="section" id="sec-incidents"></div>
+            <div class="section" id="sec-tickets"></div>
+            <div class="section" id="sec-addclient"></div>
+        </main>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+let allClients = [];
+let healthStatus = {};
+
+function showError(msg){const el=document.getElementById('errorMsg');el.textContent=msg;el.style.display='block';}
+function hideError(){document.getElementById('errorMsg').style.display='none';}
+
+async function kzLogin(){
+    hideError();
+    const username=document.getElementById('loginUsername').value.trim().toLowerCase();
+    const pin=document.getElementById('loginPin').value.trim();
+    if(!username||!pin){showError('Enter username and PIN');return;}
+    const email=username+'@kuzileos.local';
+    const password='Kuzile-'+username+'-'+pin;
+    const {data:authData,error:authError}=await window.sb.auth.signInWithPassword({email,password});
+    if(authError||!authData.user){showError('Invalid credentials');return;}
+    const {data:profile}=await window.sb.from('kz_staff').select('*').eq('username',username).eq('is_active',true).single();
+    if(!profile){showError('Account not active');await window.sb.auth.signOut();return;}
+    currentUser=profile;
+    initApp();
+}
+
+async function kzLogout(){await window.sb.auth.signOut();location.reload();}
+
+async function checkSession(){
+    const {data:{session}}=await window.sb.auth.getSession();
+    if(!session)return;
+    const username=session.user.email.split('@')[0];
+    const {data:profile}=await window.sb.from('kz_staff').select('*').eq('username',username).eq('is_active',true).single();
+    if(!profile){await window.sb.auth.signOut();return;}
+    currentUser=profile;
+    initApp();
+}
+
+async function initApp(){
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('mainApp').style.display='block';
+    document.getElementById('navUser').textContent=currentUser.full_name||currentUser.username;
+    await loadClients();
+    await runHealthChecks();
+    loadOverview();
+    setInterval(()=>{runHealthChecks();loadOverview();},60000);
+}
+
+function showSection(id,el){
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    document.getElementById('sec-'+id).classList.add('active');
+    if(el)el.classList.add('active');
+    if(id==='clients')renderClients();
+    if(id==='health')renderHealth();
+    if(id==='incidents')loadIncidents();
+    if(id==='tickets')loadTickets();
+    if(id==='addclient')renderAddClient();
+}
+
+async function loadClients(){
+    const {data}=await window.sb.from('kz_clients').select('*').order('name');
+    allClients=data||[];
+}
+
+async function runHealthChecks(){
+    document.getElementById('lastRefresh').textContent='Checking...';
+    const checks=allClients.map(async client=>{
+        if(!client.platform_url){healthStatus[client.id]={status:'unknown',ms:null};return;}
+        const start=Date.now();
+        try{
+            const res=await fetch(client.platform_url,{method:'HEAD',mode:'no-cors',signal:AbortSignal.timeout(8000)});
+            const ms=Date.now()-start;
+            healthStatus[client.id]={status:'online',ms};
+            await window.sb.from('kz_health_checks').insert([{client_id:client.id,status:'online',response_time_ms:ms,status_code:200}]);
+        }catch(e){
+            const ms=Date.now()-start;
+            healthStatus[client.id]={status:'offline',ms,error:e.message};
+            await window.sb.from('kz_health_checks').insert([{client_id:client.id,status:'offline',response_time_ms:ms,error_message:e.message}]);
+        }
+    });
+    await Promise.all(checks);
+    document.getElementById('lastRefresh').textContent='Last check: '+new Date().toLocaleTimeString('en-ZA');
+}
+
+async function refreshAll(){
+    await loadClients();
+    await runHealthChecks();
+    loadOverview();
+    const active=document.querySelector('.nav-item.active');
+    const section=document.querySelector('.section.active');
+    if(section&&section.id==='sec-clients')renderClients();
+    if(section&&section.id==='sec-health')renderHealth();
+}
+
+async function loadOverview(){
+    const online=Object.values(healthStatus).filter(h=>h.status==='online').length;
+    const offline=Object.values(healthStatus).filter(h=>h.status==='offline').length;
+    const {data:openInc}=await window.sb.from('kz_incidents').select('id').eq('status','open');
+    const {data:openTix}=await window.sb.from('kz_tickets').select('id').eq('status','open');
+
+    document.getElementById('sec-overview').innerHTML=`
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Command Center</h2>
+        <p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">${new Date().toLocaleDateString('en-ZA',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+    </div>
+    <div class="stats-grid">
+        <div class="stat-card"><p class="lbl">Total Clients</p><p class="num">${allClients.length}</p></div>
+        <div class="stat-card"><p class="lbl">Online</p><p class="num" style="color:#34d399;">${online}</p></div>
+        <div class="stat-card"><p class="lbl">Offline</p><p class="num" style="color:#f87171;">${offline}</p></div>
+        <div class="stat-card"><p class="lbl">Open Incidents</p><p class="num" style="color:#fbbf24;">${(openInc||[]).length}</p></div>
+        <div class="stat-card"><p class="lbl">Open Tickets</p><p class="num" style="color:#a5b4fc;">${(openTix||[]).length}</p></div>
+    </div>
+    <div style="margin-bottom:1rem;"><h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:#e2e8f0;"><i class="fas fa-heart-pulse" style="color:#a5b4fc;margin-right:0.5rem;"></i>Client Status</h3>
+    ${allClients.map(c=>{
+        const h=healthStatus[c.id]||{status:'checking'};
+        const statusClass=h.status==='online'?'online':h.status==='offline'?'offline':'checking';
+        const pulseClass=h.status==='online'?'green':h.status==='offline'?'red':'yellow';
+        return `<div class="client-card ${statusClass}" onclick="showSection('clients',document.querySelector('[onclick*=clients]'))">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                    <span class="pulse ${pulseClass}"></span>
+                    <div>
+                        <p style="font-weight:700;">${c.name}</p>
+                        <p style="font-size:0.78rem;color:rgba(255,255,255,0.35);">${c.platform_url||'No URL set'}</p>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <span class="badge badge-${h.status==='online'?'green':h.status==='offline'?'red':'yellow'}">${h.status}</span>
+                    ${h.ms?`<p style="font-size:0.72rem;color:rgba(255,255,255,0.25);margin-top:0.25rem;">${h.ms}ms</p>`:''}
+                </div>
+            </div>
+        </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function renderClients(){
+    document.getElementById('sec-clients').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">All Clients</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">${allClients.length} managed platforms</p></div>
+        <button onclick="showSection('addclient',document.querySelector('[onclick*=addclient]'))" class="btn-primary"><i class="fas fa-plus"></i> Add Client</button>
+    </div>
+    ${allClients.map(c=>{
+        const h=healthStatus[c.id]||{status:'unknown'};
+        return `<div class="client-card ${h.status==='online'?'online':h.status==='offline'?'offline':'checking'}" style="margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+                <div>
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.25rem;">
+                        <span class="pulse ${h.status==='online'?'green':h.status==='offline'?'red':'yellow'}"></span>
+                        <h3 style="font-weight:800;font-size:1rem;">${c.name}</h3>
+                        <span class="badge badge-${c.status==='active'?'green':'gray'}">${c.status}</span>
+                    </div>
+                    <p style="font-size:0.78rem;color:rgba(255,255,255,0.35);margin-left:1.1rem;">${c.short_code} • ${c.tier}</p>
+                </div>
+                <span class="badge badge-${h.status==='online'?'green':h.status==='offline'?'red':'yellow'}">${h.status}${h.ms?' • '+h.ms+'ms':''}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                <div><p style="font-size:0.68rem;color:rgba(99,102,241,0.6);text-transform:uppercase;">Platform URL</p><p style="font-size:0.78rem;">${c.platform_url?`<a href="${c.platform_url}" target="_blank" style="color:#a5b4fc;">Open ↗</a>`:'Not set'}</p></div>
+                <div><p style="font-size:0.68rem;color:rgba(99,102,241,0.6);text-transform:uppercase;">Supabase</p><p style="font-size:0.78rem;color:rgba(255,255,255,0.45);">${c.supabase_project_id||'—'}</p></div>
+                <div><p style="font-size:0.68rem;color:rgba(99,102,241,0.6);text-transform:uppercase;">GitHub</p><p style="font-size:0.78rem;color:rgba(255,255,255,0.45);">${c.github_repo||'—'}</p></div>
+                <div><p style="font-size:0.68rem;color:rgba(99,102,241,0.6);text-transform:uppercase;">Go Live</p><p style="font-size:0.78rem;">${c.go_live_date?new Date(c.go_live_date).toLocaleDateString('en-ZA'):'—'}</p></div>
+                <div><p style="font-size:0.68rem;color:rgba(99,102,241,0.6);text-transform:uppercase;">Contact</p><p style="font-size:0.78rem;color:rgba(255,255,255,0.45);">${c.contact_name||'—'}</p></div>
+            </div>
+            <div style="display:flex;gap:0.5rem;">
+                <button onclick="logIncident('${c.id}','${c.name}')" class="btn-danger" style="font-size:0.78rem;padding:0.35rem 0.75rem;"><i class="fas fa-triangle-exclamation"></i> Log Incident</button>
+                <button onclick="openTicket('${c.id}','${c.name}')" class="btn-secondary" style="font-size:0.78rem;padding:0.35rem 0.75rem;"><i class="fas fa-ticket"></i> Open Ticket</button>
+            </div>
+        </div>`;
+    }).join('')}`;
+}
+
+async function renderHealth(){
+    const {data}=await window.sb.from('kz_health_checks').select('*,kz_clients(name)').order('checked_at',{ascending:false}).limit(100);
+    const checks=data||[];
+    document.getElementById('sec-health').innerHTML=`
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Health Checks</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">Live uptime monitoring — auto-checks every 60 seconds</p></div>
+    <div class="stats-grid" style="margin-bottom:1.5rem;">
+        ${allClients.map(c=>{
+            const h=healthStatus[c.id]||{status:'unknown'};
+            const clientChecks=checks.filter(ch=>ch.client_id===c.id);
+            const uptime=clientChecks.length>0?Math.round((clientChecks.filter(ch=>ch.status==='online').length/clientChecks.length)*100):null;
+            return `<div class="stat-card"><p class="lbl">${c.name}</p><p class="num" style="color:${h.status==='online'?'#34d399':'#f87171'};">${h.status==='online'?'UP':'DOWN'}</p><p style="font-size:0.75rem;color:rgba(255,255,255,0.3);">${uptime!==null?uptime+'% uptime':''} ${h.ms?h.ms+'ms':''}</p></div>`;
+        }).join('')}
+    </div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr;"><span>Client</span><span>Status</span><span>Response</span><span>Time</span></div>
+        <div>${checks.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);">No health checks yet</div>':checks.map(ch=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr;">
+            <span style="font-weight:600;">${ch.kz_clients?.name||'—'}</span>
+            <span class="badge badge-${ch.status==='online'?'green':'red'}">${ch.status}</span>
+            <span style="font-size:0.82rem;">${ch.response_time_ms?ch.response_time_ms+'ms':'—'}</span>
+            <span style="font-size:0.78rem;color:rgba(255,255,255,0.3);">${new Date(ch.checked_at).toLocaleTimeString('en-ZA')}</span>
+        </div>`).join('')}</div>
+    </div>`;
+}
+
+async function loadIncidents(){
+    const {data}=await window.sb.from('kz_incidents').select('*,kz_clients(name)').order('created_at',{ascending:false});
+    const incidents=data||[];
+    document.getElementById('sec-incidents').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Incidents</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">${incidents.filter(i=>i.status==='open').length} open</p></div>
+    </div>
+    <div id="incidentFormWrap"></div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;"><span>Title</span><span>Client</span><span>Severity</span><span>Status</span><span>Started</span><span></span></div>
+        <div>${incidents.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);">No incidents logged</div>':incidents.map(i=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;">
+            <div><p style="font-weight:600;font-size:0.875rem;">${i.title}</p><p style="font-size:0.75rem;color:rgba(255,255,255,0.3);">${i.description?i.description.substring(0,50)+'...':''}</p></div>
+            <span style="font-size:0.82rem;">${i.kz_clients?.name||'—'}</span>
+            <span class="badge badge-${i.severity==='critical'?'red':i.severity==='high'?'red':i.severity==='medium'?'yellow':'blue'}">${i.severity}</span>
+            <span class="badge badge-${i.status==='open'?'red':i.status==='resolved'?'green':'yellow'}">${i.status}</span>
+            <span style="font-size:0.78rem;color:rgba(255,255,255,0.3);">${new Date(i.started_at).toLocaleDateString('en-ZA')}</span>
+            <div style="display:flex;gap:0.3rem;">${i.status==='open'?`<button onclick="resolveIncident('${i.id}')" class="btn-success" style="padding:0.2rem 0.5rem;font-size:0.7rem;"><i class="fas fa-check"></i></button>`:''}</div>
+        </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+async function loadTickets(){
+    const {data}=await window.sb.from('kz_tickets').select('*,kz_clients(name)').order('created_at',{ascending:false});
+    const tickets=data||[];
+    document.getElementById('sec-tickets').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Support Tickets</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">${tickets.filter(t=>t.status==='open').length} open</p></div>
+    </div>
+    <div id="ticketFormWrap"></div>
+    <div class="card" style="overflow:hidden;">
+        <div class="table-row table-head" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;"><span>Title</span><span>Client</span><span>Priority</span><span>Status</span><span>Raised</span><span></span></div>
+        <div>${tickets.length===0?'<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.2);">No tickets yet</div>':tickets.map(t=>`
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 80px;">
+            <div><p style="font-weight:600;font-size:0.875rem;">${t.title}</p><p style="font-size:0.75rem;color:rgba(255,255,255,0.3);">${t.raised_by||''}</p></div>
+            <span style="font-size:0.82rem;">${t.kz_clients?.name||'—'}</span>
+            <span class="badge badge-${t.priority==='critical'?'red':t.priority==='high'?'red':t.priority==='medium'?'yellow':'blue'}">${t.priority}</span>
+            <span class="badge badge-${t.status==='open'?'red':t.status==='resolved'?'green':'yellow'}">${t.status}</span>
+            <span style="font-size:0.78rem;color:rgba(255,255,255,0.3);">${new Date(t.created_at).toLocaleDateString('en-ZA')}</span>
+            <div style="display:flex;gap:0.3rem;">${t.status==='open'?`<button onclick="resolveTicket('${t.id}')" class="btn-success" style="padding:0.2rem 0.5rem;font-size:0.7rem;"><i class="fas fa-check"></i></button>`:''}</div>
+        </div>`).join('')}
+        </div>
+    </div>`;
+}
+
+function logIncident(clientId, clientName){
+    document.getElementById('incidentFormWrap').innerHTML=`
+    <div class="card p-5 mb-6">
+        <div class="section-header"><i class="fas fa-triangle-exclamation" style="color:#f87171;"></i> Log Incident — ${clientName}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div style="grid-column:1/-1;"><label>Title</label><input id="incTitle" placeholder="Incident title"></div>
+            <div><label>Severity</label><select id="incSev"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+            <div><label>Source</label><select id="incSource"><option value="manual">Manual</option><option value="sentry">Sentry</option><option value="health_check">Health Check</option><option value="client">Client Report</option></select></div>
+            <div style="grid-column:1/-1;"><label>Description</label><textarea id="incDesc" placeholder="What happened?" style="height:70px;resize:vertical;"></textarea></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="saveIncident('${clientId}')" class="btn-primary"><i class="fas fa-save"></i> Log Incident</button>
+            <button onclick="document.getElementById('incidentFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+    showSection('incidents', document.querySelector('[onclick*=incidents]'));
+}
+
+function openTicket(clientId, clientName){
+    document.getElementById('ticketFormWrap').innerHTML=`
+    <div class="card p-5 mb-6">
+        <div class="section-header"><i class="fas fa-ticket" style="color:#a5b4fc;"></i> New Ticket — ${clientName}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+            <div style="grid-column:1/-1;"><label>Title</label><input id="tixTitle" placeholder="Issue title"></div>
+            <div><label>Priority</label><select id="tixPri"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+            <div><label>Category</label><select id="tixCat"><option value="bug">Bug</option><option value="feature">Feature Request</option><option value="support">Support</option><option value="billing">Billing</option></select></div>
+            <div><label>Raised By</label><input id="tixBy" placeholder="Name or email"></div>
+            <div style="grid-column:1/-1;"><label>Description</label><textarea id="tixDesc" placeholder="Describe the issue..." style="height:70px;resize:vertical;"></textarea></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="saveTicket('${clientId}')" class="btn-primary"><i class="fas fa-save"></i> Open Ticket</button>
+            <button onclick="document.getElementById('ticketFormWrap').innerHTML=''" class="btn-secondary">Cancel</button>
+        </div>
+    </div>`;
+    showSection('tickets', document.querySelector('[onclick*=tickets]'));
+}
+
+async function saveIncident(clientId){
+    const title=document.getElementById('incTitle').value.trim();
+    if(!title){alert('Title required');return;}
+    const {error}=await window.sb.from('kz_incidents').insert([{client_id:clientId,title,severity:document.getElementById('incSev').value,source:document.getElementById('incSource').value,description:document.getElementById('incDesc').value.trim()}]);
+    if(error){alert('Error: '+error.message);return;}
+    document.getElementById('incidentFormWrap').innerHTML='';
+    await loadIncidents();
+}
+
+async function saveTicket(clientId){
+    const title=document.getElementById('tixTitle').value.trim();
+    if(!title){alert('Title required');return;}
+    const {error}=await window.sb.from('kz_tickets').insert([{client_id:clientId,title,priority:document.getElementById('tixPri').value,category:document.getElementById('tixCat').value,raised_by:document.getElementById('tixBy').value.trim(),description:document.getElementById('tixDesc').value.trim()}]);
+    if(error){alert('Error: '+error.message);return;}
+    document.getElementById('ticketFormWrap').innerHTML='';
+    await loadTickets();
+}
+
+async function resolveIncident(id){
+    await window.sb.from('kz_incidents').update({status:'resolved',resolved_at:new Date().toISOString(),resolved_by:currentUser.full_name||currentUser.username}).eq('id',id);
+    await loadIncidents();
+}
+
+async function resolveTicket(id){
+    await window.sb.from('kz_tickets').update({status:'resolved',resolved_at:new Date().toISOString()}).eq('id',id);
+    await loadTickets();
+}
+
+function renderAddClient(){
+    document.getElementById('sec-addclient').innerHTML=`
+    <div style="margin-bottom:1.5rem;"><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Add Client</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">Register a new managed platform</p></div>
+    <div class="card p-6" style="max-width:600px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <div><label>Client Name *</label><input id="clName" placeholder="e.g. City Taxi Association"></div>
+            <div><label>Short Code *</label><input id="clCode" placeholder="e.g. CTA" style="text-transform:uppercase;"></div>
+            <div><label>Platform URL</label><input id="clUrl" placeholder="https://...vercel.app/app.html"></div>
+            <div><label>Status</label><select id="clStatus"><option value="active">Active</option><option value="development">Development</option><option value="inactive">Inactive</option></select></div>
+            <div><label>Tier</label><select id="clTier"><option value="standard">Standard</option><option value="premium">Premium</option><option value="enterprise">Enterprise</option></select></div>
+            <div><label>Go Live Date</label><input id="clGoLive" type="date"></div>
+            <div><label>Supabase Project ID</label><input id="clSupabase" placeholder="Project reference ID"></div>
+            <div><label>GitHub Repo</label><input id="clGithub" placeholder="username/repo"></div>
+            <div><label>Contact Name</label><input id="clContactName" placeholder="Primary contact"></div>
+            <div><label>Contact Email</label><input id="clContactEmail" placeholder="email@domain.com"></div>
+            <div><label>Contact Phone</label><input id="clContactPhone" placeholder="Phone number"></div>
+            <div style="grid-column:1/-1;"><label>Notes</label><textarea id="clNotes" placeholder="Additional notes..." style="height:60px;resize:vertical;"></textarea></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;">
+            <button onclick="addClient()" class="btn-primary"><i class="fas fa-save"></i> Add Client</button>
+        </div>
+    </div>`;
+}
+
+async function addClient(){
+    const name=document.getElementById('clName').value.trim();
+    const code=document.getElementById('clCode').value.trim().toUpperCase();
+    if(!name||!code){alert('Name and code required');return;}
+    const {error}=await window.sb.from('kz_clients').insert([{name,short_code:code,platform_url:document.getElementById('clUrl').value.trim(),status:document.getElementById('clStatus').value,tier:document.getElementById('clTier').value,go_live_date:document.getElementById('clGoLive').value||null,supabase_project_id:document.getElementById('clSupabase').value.trim(),github_repo:document.getElementById('clGithub').value.trim(),contact_name:document.getElementById('clContactName').value.trim(),contact_email:document.getElementById('clContactEmail').value.trim(),contact_phone:document.getElementById('clContactPhone').value.trim(),notes:document.getElementById('clNotes').value.trim()}]);
+    if(error){alert('Error: '+error.message);return;}
+    await loadClients();
+    showSection('clients',document.querySelector('[onclick*=clients]'));
+}
+
+checkSession();
+</script>
+</body>
+</html>
