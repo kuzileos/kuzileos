@@ -155,6 +155,8 @@ main { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="nav-item" onclick="showSection('bugs',this)"><i class="fas fa-bug"></i> Bug Tracker</div>
             <div class="nav-section">Analytics</div>
             <div class="nav-item" onclick="showSection('analytics',this)"><i class="fas fa-chart-line"></i> Analytics</div>
+            <div class="nav-section">Factory</div>
+            <div class="nav-item" onclick="showSection('factory',this)"><i class="fas fa-microchip"></i> Software Factory</div>
         </aside>
         <main>
             <div class="section active" id="sec-overview"></div>
@@ -168,6 +170,8 @@ main { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="section" id="sec-bugs"></div>
             <div class="section" id="sec-project-detail"></div>
             <div class="section" id="sec-analytics"></div>
+            <div class="section" id="sec-factory"></div>
+            <div class="section" id="sec-module-detail"></div>
         </main>
     </div>
 </div>
@@ -231,6 +235,7 @@ function showSection(id,el){ closeSidebar();
     if(id==='tasks')loadAllTasks();
     if(id==='bugs')loadAllBugs();
     if(id==='analytics')loadAnalytics();
+    if(id==='factory')loadFactory();
 }
 
 async function loadClients(){
@@ -1117,6 +1122,369 @@ async function fetchClientAnalytics(client) {
         return html;
     } catch(e) {
         return `<div style="color:#f87171;font-size:0.85rem;"><i class="fas fa-exclamation-circle"></i> Failed to connect to client platform: ${e.message}</div>`;
+    }
+}
+
+
+let allModules = [];
+let clientModules = {};
+
+async function loadFactory() {
+    const { data: modules } = await window.sb.from('kz_modules').select('*').eq('is_active', true).order('category').order('name');
+    allModules = modules||[];
+    const { data: deployments } = await window.sb.from('kz_client_modules').select('*,kz_clients(name,short_code)');
+    clientModules = {};
+    (deployments||[]).forEach(d => {
+        if (!clientModules[d.module_id]) clientModules[d.module_id] = [];
+        clientModules[d.module_id].push(d.kz_clients);
+    });
+    renderFactory();
+}
+
+function renderFactory(filterCategory='all', searchTerm='') {
+    const categories = [...new Set(allModules.map(m=>m.category))].sort();
+    let filtered = allModules;
+    if (filterCategory !== 'all') filtered = filtered.filter(m=>m.category===filterCategory);
+    if (searchTerm) filtered = filtered.filter(m=>m.name.toLowerCase().includes(searchTerm.toLowerCase())||m.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const totalDeployments = Object.values(clientModules).reduce((s,arr)=>s+arr.length,0);
+
+    document.getElementById('sec-factory').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <div><h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">Software Factory</h2><p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">Reusable module library for client projects</p></div>
+    </div>
+    <div class="stats-grid" style="margin-bottom:1.5rem;">
+        <div class="stat-card"><p class="lbl">Total Modules</p><p class="num">${allModules.length}</p></div>
+        <div class="stat-card"><p class="lbl">Categories</p><p class="num">${categories.length}</p></div>
+        <div class="stat-card"><p class="lbl">Total Deployments</p><p class="num" style="color:#34d399;">${totalDeployments}</p></div>
+        <div class="stat-card"><p class="lbl">Clients Using Factory</p><p class="num" style="color:#a5b4fc;">${allClients.length}</p></div>
+    </div>
+
+    <div class="card p-4 mb-6">
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
+            <input id="moduleSearch" placeholder="Search modules..." style="max-width:220px;" oninput="renderFactory(document.getElementById('catFilter').value,this.value)">
+            <select id="catFilter" style="width:auto;" onchange="renderFactory(this.value,document.getElementById('moduleSearch').value)">
+                <option value="all">All Categories</option>
+                ${categories.map(c=>`<option value="${c}" ${c===filterCategory?'selected':''}>${c}</option>`).join('')}
+            </select>
+            <span style="font-size:0.78rem;color:rgba(255,255,255,0.3);">${filtered.length} modules</span>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;">
+    ${filtered.map(m => {
+        const deployed = clientModules[m.id]||[];
+        return `<div class="card p-5" style="cursor:pointer;transition:all 0.2s;border-top:3px solid ${categoryColor(m.category)};" onclick="viewModule('${m.id}')">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="fas ${m.icon||'fa-puzzle-piece'}" style="color:#a5b4fc;font-size:0.9rem;"></i>
+                    </div>
+                    <div>
+                        <p style="font-weight:800;font-size:0.9rem;">${m.name}</p>
+                        <span style="font-size:0.65rem;font-weight:700;color:${categoryColor(m.category)};text-transform:uppercase;">${m.category}</span>
+                    </div>
+                </div>
+                <span class="badge badge-${deployed.length>0?'green':'gray'}">${deployed.length} deployed</span>
+            </div>
+            <p style="font-size:0.78rem;color:rgba(255,255,255,0.45);line-height:1.5;margin-bottom:0.75rem;">${m.description}</p>
+            ${deployed.length>0?`<div style="display:flex;flex-wrap:wrap;gap:0.3rem;">${deployed.map(c=>`<span class="badge badge-blue">${c?.short_code||'?'}</span>`).join('')}</div>`:'<span style="font-size:0.72rem;color:rgba(255,255,255,0.2);">Not yet deployed</span>'}
+        </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function categoryColor(cat) {
+    const colors = {
+        'Core':'#6366f1','Operations':'#00d4b4','Administration':'#60a5fa',
+        'Finance':'#34d399','Compliance':'#fbbf24','Analytics':'#a5b4fc',
+        'Public':'#f87171','Academic':'#fb923c'
+    };
+    return colors[cat]||'#a5b4fc';
+}
+
+async function viewModule(id) {
+    const m = allModules.find(x=>x.id===id);
+    if (!m) return;
+    const deployed = clientModules[id]||[];
+    const deployedIds = deployed.map(c=>c?.id).filter(Boolean);
+
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    document.getElementById('sec-module-detail').classList.add('active');
+
+    document.getElementById('sec-module-detail').innerHTML = `
+    <button onclick="loadFactory();showSection('factory',document.querySelector('[onclick*=factory]'))" class="btn-secondary mb-4"><i class="fas fa-arrow-left"></i> Back to Factory</button>
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fas ${m.icon||'fa-puzzle-piece'}" style="color:#a5b4fc;font-size:1.3rem;"></i>
+        </div>
+        <div>
+            <h2 style="font-size:1.2rem;font-weight:900;color:#a5b4fc;">${m.name}</h2>
+            <span style="font-size:0.72rem;font-weight:700;color:${categoryColor(m.category)};text-transform:uppercase;">${m.category}</span>
+        </div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:1.5rem;">
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-info-circle" style="color:#a5b4fc;"></i> Module Info</div>
+            <p style="font-size:0.85rem;color:rgba(255,255,255,0.55);line-height:1.6;margin-bottom:1rem;">${m.description}</p>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                <div style="display:flex;justify-content:space-between;font-size:0.82rem;"><span style="color:rgba(255,255,255,0.35);">Table prefix</span><code style="color:#a5b4fc;">${m.table_prefix||'—'}_*</code></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.82rem;"><span style="color:rgba(255,255,255,0.35);">Slug</span><code style="color:#a5b4fc;">${m.slug}</code></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.82rem;"><span style="color:rgba(255,255,255,0.35);">Deployed in</span><span style="color:#34d399;">${deployed.length} client${deployed.length!==1?'s':''}</span></div>
+            </div>
+        </div>
+        <div class="card p-5">
+            <div class="section-header"><i class="fas fa-building" style="color:#a5b4fc;"></i> Deployed In</div>
+            ${deployed.length===0?'<p style="color:rgba(255,255,255,0.2);font-size:0.85rem;">Not deployed in any client project yet</p>':deployed.map(c=>`
+            <div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <span class="badge badge-blue">${c?.short_code||'?'}</span>
+                <span style="font-size:0.85rem;">${c?.name||'Unknown'}</span>
+                <span class="badge badge-green" style="margin-left:auto;">Active</span>
+            </div>`).join('')}
+            <div style="margin-top:1rem;">
+                <p style="font-size:0.72rem;color:rgba(255,255,255,0.3);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;">Deploy to client</p>
+                <div style="display:flex;gap:0.75rem;">
+                    <select id="deployTarget" style="flex:1;">
+                        <option value="">Select client...</option>
+                        ${allClients.filter(c=>!deployedIds.includes(c.id)).map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+                    </select>
+                    <button onclick="deployModule('${m.id}')" class="btn-primary" style="white-space:nowrap;"><i class="fas fa-rocket"></i> Deploy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="card p-5">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <div class="section-header" style="margin:0;"><i class="fas fa-database" style="color:#a5b4fc;"></i> SQL Template</div>
+                <button onclick="generateSQL('${m.id}')" class="btn-primary" style="font-size:0.78rem;padding:0.4rem 0.85rem;"><i class="fas fa-code"></i> Generate</button>
+            </div>
+            <div id="sqlOutput-${m.id}" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:1rem;font-family:monospace;font-size:0.72rem;color:rgba(255,255,255,0.5);min-height:80px;white-space:pre-wrap;line-height:1.5;">Click Generate to produce the SQL schema for this module.</div>
+        </div>
+        <div class="card p-5">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <div class="section-header" style="margin:0;"><i class="fas fa-code" style="color:#a5b4fc;"></i> HTML Starter</div>
+                <button onclick="generateHTML('${m.id}')" class="btn-primary" style="font-size:0.78rem;padding:0.4rem 0.85rem;"><i class="fas fa-code"></i> Generate</button>
+            </div>
+            <div id="htmlOutput-${m.id}" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:1rem;font-family:monospace;font-size:0.72rem;color:rgba(255,255,255,0.5);min-height:80px;white-space:pre-wrap;line-height:1.5;">Click Generate to produce the HTML starter code for this module.</div>
+        </div>
+    </div>`;
+}
+
+async function deployModule(moduleId) {
+    const clientId = document.getElementById('deployTarget').value;
+    if (!clientId) { alert('Select a client first'); return; }
+    const { error } = await window.sb.from('kz_client_modules').insert([{
+        client_id: clientId,
+        module_id: moduleId,
+        status: 'deployed'
+    }]);
+    if (error) { alert('Error: '+error.message); return; }
+    await loadFactory();
+    viewModule(moduleId);
+}
+
+function generateSQL(moduleId) {
+    const m = allModules.find(x=>x.id===moduleId);
+    if (!m) return;
+    const p = m.table_prefix||m.slug.replace(/-/g,'_');
+    let sql = '';
+
+    const templates = {
+        'attendance': `-- Attendance Tracking Module
+CREATE TABLE {prefix}_attendance (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id uuid, -- or association_id
+  learner_id uuid, -- or driver_id / member_id
+  record_name text,
+  date date NOT NULL,
+  status text NOT NULL DEFAULT 'present', -- present, absent, late, early_departure
+  arrival_time time,
+  absence_reason text,
+  recorded_by text,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE {prefix}_attendance ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated full access" ON {prefix}_attendance FOR ALL TO authenticated USING (true) WITH CHECK (true);`,
+
+        'fees': `-- Fee & Payment Tracking Module
+CREATE TABLE {prefix}_fees (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id uuid NOT NULL, -- learner_id / member_id
+  entity_name text,
+  fee_type text NOT NULL,
+  description text,
+  amount numeric NOT NULL,
+  due_date date,
+  status text DEFAULT 'outstanding', -- outstanding, partial, paid
+  created_at timestamp with time zone DEFAULT now()
+);
+CREATE TABLE {prefix}_payments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  fee_id uuid REFERENCES {prefix}_fees(id),
+  entity_id uuid NOT NULL,
+  entity_name text,
+  amount_paid numeric NOT NULL,
+  payment_date date NOT NULL,
+  payment_method text DEFAULT 'cash',
+  reference text,
+  received_by text,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE {prefix}_fees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {prefix}_payments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated full access" ON {prefix}_fees FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated full access" ON {prefix}_payments FOR ALL TO authenticated USING (true) WITH CHECK (true);`,
+
+        'incidents': `-- Incident & Discipline Module
+CREATE TABLE {prefix}_incidents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id uuid, -- member_id / learner_id / driver_id
+  entity_name text,
+  record_type text NOT NULL, -- warning, detention, suspension, bullying_report, award
+  description text,
+  severity text DEFAULT 'medium', -- low, medium, high, critical
+  status text DEFAULT 'open',
+  incident_date date,
+  action_taken text,
+  recorded_by text,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE {prefix}_incidents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated full access" ON {prefix}_incidents FOR ALL TO authenticated USING (true) WITH CHECK (true);`,
+
+        'queue': `-- Queue Management Module
+CREATE TABLE {prefix}_queue (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehicle_id uuid,
+  plate_number text,
+  route_id uuid,
+  route_label text,
+  driver_id uuid,
+  driver_name text,
+  capacity integer DEFAULT 15,
+  seats_filled integer DEFAULT 0,
+  status text DEFAULT 'waiting', -- waiting, loading, full, departed
+  departed_at timestamp with time zone,
+  marshal_name text,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE {prefix}_queue ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated full access" ON {prefix}_queue FOR ALL TO authenticated USING (true) WITH CHECK (true);`,
+
+        'complaints': `-- Public Complaints Portal Module
+CREATE TABLE {prefix}_complaints (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  complainant_name text,
+  complainant_phone text NOT NULL,
+  complaint_type text NOT NULL,
+  incident_date date,
+  route text,
+  vehicle_description text,
+  description text NOT NULL,
+  status text DEFAULT 'new',
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE {prefix}_complaints ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon insert" ON {prefix}_complaints FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "authenticated full access" ON {prefix}_complaints FOR ALL TO authenticated USING (true) WITH CHECK (true);`,
+
+        'staff': `-- Staff Management Module
+CREATE TABLE {prefix}_staff_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name text NOT NULL,
+  id_number text,
+  phone text,
+  email text,
+  role text DEFAULT 'staff',
+  department text,
+  qualification text,
+  employment_date date,
+  employment_type text DEFAULT 'permanent',
+  status text DEFAULT 'active',
+  emergency_contact_name text,
+  emergency_contact_phone text,
+  notes text,
+  created_at timestamp with time zone DEFAULT now()
+);
+CREATE TABLE {prefix}_leave_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  staff_id uuid REFERENCES {prefix}_staff_profiles(id) NOT NULL,
+  staff_name text,
+  leave_type text NOT NULL,
+  start_date date NOT NULL,
+  end_date date NOT NULL,
+  days integer,
+  reason text,
+  status text DEFAULT 'pending',
+  approved_by text,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE {prefix}_staff_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {prefix}_leave_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "authenticated full access" ON {prefix}_staff_profiles FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated full access" ON {prefix}_leave_requests FOR ALL TO authenticated USING (true) WITH CHECK (true);`
+    };
+
+    const template = templates[m.slug] || `-- ${m.name} Module
+-- Table prefix: ${p}_
+-- No pre-built template available for this module yet.
+-- Build the schema based on your specific requirements.
+-- Remember to:
+-- 1. Enable RLS: ALTER TABLE ${p}_* ENABLE ROW LEVEL SECURITY;
+-- 2. Add policy: CREATE POLICY "authenticated full access" ON ${p}_* FOR ALL TO authenticated USING (true) WITH CHECK (true);`;
+
+    const output = template.replace(/{prefix}/g, p);
+    const el = document.getElementById('sqlOutput-'+moduleId);
+    if (el) {
+        el.textContent = output;
+        el.style.color = '#a5b4fc';
+    }
+}
+
+function generateHTML(moduleId) {
+    const m = allModules.find(x=>x.id===moduleId);
+    if (!m) return;
+    const p = m.table_prefix||m.slug.replace(/-/g,'_');
+
+    const output = `// ${m.name} — HTML Starter
+// Add to sidebar:
+// <div class="sidebar-item" onclick="showModule('${m.slug}',this)">
+//   <i class="fas ${m.icon}"></i> ${m.name}
+// </div>
+
+// Add module container:
+// <div id="mod-${m.slug}" style="display:none;">Loading...</div>
+
+// Add to showModule() routing:
+// if (mod === '${m.slug}') load${m.name.replace(/[^a-zA-Z]/g,'')}();
+
+// Add to initApp() if needed:
+// await load${m.name.replace(/[^a-zA-Z]/g,'')}();
+
+// Core function pattern:
+async function load${m.name.replace(/[^a-zA-Z]/g,'')}() {
+    const { data } = await window.sb
+        .from('${p}_*') // replace * with your table name
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    document.getElementById('mod-${m.slug}').innerHTML = \`
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:800;">${m.name}</h2>
+        <p style="color:rgba(255,255,255,0.4);">${m.description}</p>
+    </div>
+    <!-- Add your UI here -->
+    \`;
+}`;
+
+    const el = document.getElementById('htmlOutput-'+moduleId);
+    if (el) {
+        el.textContent = output;
+        el.style.color = '#34d399';
     }
 }
 
