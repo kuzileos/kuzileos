@@ -160,6 +160,8 @@ main { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="nav-item" onclick="showSection('factory',this)"><i class="fas fa-microchip"></i> Software Factory</div>
             <div class="nav-section">Business</div>
             <div class="nav-item" onclick="showSection('proposals',this)"><i class="fas fa-file-contract"></i> Proposals</div>
+            <div class="nav-section">AI</div>
+            <div class="nav-item" onclick="showSection('ai',this)"><i class="fas fa-robot"></i> AI Assistant</div>
         </aside>
         <main>
             <div class="section active" id="sec-overview"></div>
@@ -176,6 +178,7 @@ main { flex:1; padding:1.5rem; overflow-y:auto; }
             <div class="section" id="sec-factory"></div>
             <div class="section" id="sec-module-detail"></div>
             <div class="section" id="sec-proposals"></div>
+            <div class="section" id="sec-ai"></div>
         </main>
     </div>
 </div>
@@ -241,6 +244,7 @@ function showSection(id,el){ closeSidebar();
     if(id==='analytics')loadAnalytics();
     if(id==='factory')loadFactory();
     if(id==='proposals')loadProposals();
+    if(id==='ai')loadAI();
 }
 
 async function loadClients(){
@@ -1988,6 +1992,222 @@ function generatePDF(type, data) {
 
     const filename = (data.document_number||type)+'-'+((data.client_name||'client').replace(/\s+/g,'-'))+'.pdf';
     doc.save(filename);
+}
+
+
+let aiMessages = [];
+let aiContext = null;
+
+async function loadAI() {
+    document.getElementById('sec-ai').innerHTML = `
+    <div style="margin-bottom:1.5rem;">
+        <h2 style="font-size:1.3rem;font-weight:900;color:#a5b4fc;">AI Assistant</h2>
+        <p style="color:rgba(255,255,255,0.3);font-size:0.85rem;">Powered by Claude — debug, generate code, analyse clients</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:1rem;height:calc(100vh - 200px);">
+        <div style="display:flex;flex-direction:column;gap:1rem;">
+            <div class="card p-5">
+                <div class="section-header"><i class="fas fa-bolt" style="color:#a5b4fc;"></i> Quick Actions</div>
+                <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                    <button onclick="aiQuick('Summarise all open incidents and support tickets across my clients and suggest resolution priorities.')" class="btn-secondary" style="text-align:left;font-size:0.8rem;padding:0.5rem 0.75rem;"><i class="fas fa-triangle-exclamation" style="color:#f87171;width:16px;"></i> Analyse open incidents</button>
+                    <button onclick="aiQuick('Review the health check history and identify which clients have had the most downtime or slowest response times.')" class="btn-secondary" style="text-align:left;font-size:0.8rem;padding:0.5rem 0.75rem;"><i class="fas fa-heart-pulse" style="color:#34d399;width:16px;"></i> Review uptime trends</button>
+                    <button onclick="aiQuick('Look at the open support tickets and draft professional response templates for each one.')" class="btn-secondary" style="text-align:left;font-size:0.8rem;padding:0.5rem 0.75rem;"><i class="fas fa-ticket" style="color:#a5b4fc;width:16px;"></i> Draft ticket responses</button>
+                    <button onclick="aiQuick('Analyse the current project tasks and bugs across all projects. Identify blockers and suggest what should be worked on first.')" class="btn-secondary" style="text-align:left;font-size:0.8rem;padding:0.5rem 0.75rem;"><i class="fas fa-diagram-project" style="color:#fbbf24;width:16px;"></i> Prioritise project work</button>
+                    <button onclick="aiQuick('Generate a weekly status report summary for Kuzile Advisory covering all clients, incidents, tickets and project progress.')" class="btn-secondary" style="text-align:left;font-size:0.8rem;padding:0.5rem 0.75rem;"><i class="fas fa-file-lines" style="color:#60a5fa;width:16px;"></i> Weekly status report</button>
+                </div>
+            </div>
+
+            <div class="card p-5" style="flex:1;overflow-y:auto;">
+                <div class="section-header"><i class="fas fa-database" style="color:#a5b4fc;"></i> Context</div>
+                <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);line-height:1.6;">
+                    <p style="margin-bottom:0.5rem;">The AI has access to:</p>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> ${allClients.length} clients</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> Health check history</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> Open incidents</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> Support tickets</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> Projects & tasks</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> Module library</div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;"><i class="fas fa-check" style="color:#34d399;font-size:0.65rem;"></i> Code generation</div>
+                </div>
+                <div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.06);">
+                    <button onclick="clearAIChat()" class="btn-secondary" style="width:100%;font-size:0.78rem;padding:0.4rem;"><i class="fas fa-trash"></i> Clear conversation</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="display:flex;flex-direction:column;overflow:hidden;">
+            <div id="aiChatArea" style="flex:1;overflow-y:auto;padding:1.25rem;display:flex;flex-direction:column;gap:1rem;">
+                <div style="text-align:center;padding:2rem 0;">
+                    <div style="width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;box-shadow:0 8px 24px rgba(99,102,241,0.4);">
+                        <i class="fas fa-robot" style="color:white;font-size:1.3rem;"></i>
+                    </div>
+                    <p style="font-weight:700;color:#a5b4fc;margin-bottom:0.4rem;">KuzileOS AI Assistant</p>
+                    <p style="font-size:0.82rem;color:rgba(255,255,255,0.3);">Ask me anything about your clients, code, incidents or projects.</p>
+                </div>
+            </div>
+            <div style="padding:1rem;border-top:1px solid rgba(99,102,241,0.1);">
+                <div style="display:flex;gap:0.75rem;align-items:flex-end;">
+                    <textarea id="aiInput" placeholder="Ask the AI assistant..." style="flex:1;height:60px;resize:none;font-size:0.875rem;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMessage();}"></textarea>
+                    <button onclick="sendAIMessage()" class="btn-primary" style="padding:0.65rem 1rem;height:60px;"><i class="fas fa-paper-plane"></i></button>
+                </div>
+                <p style="font-size:0.68rem;color:rgba(255,255,255,0.2);margin-top:0.4rem;">Enter to send • Shift+Enter for new line • Powered by Claude</p>
+            </div>
+        </div>
+    </div>`;
+
+    aiMessages = [];
+    await buildAIContext();
+}
+
+async function buildAIContext() {
+    const [incRes, tixRes, projRes, taskRes, bugRes, hcRes] = await Promise.all([
+        window.sb.from('kz_incidents').select('*,kz_clients(name)').eq('status','open'),
+        window.sb.from('kz_tickets').select('*,kz_clients(name)').eq('status','open'),
+        window.sb.from('kz_projects').select('*,kz_clients(name)').eq('status','active'),
+        window.sb.from('kz_tasks').select('*,kz_projects(name)').neq('status','done').limit(50),
+        window.sb.from('kz_bugs').select('*,kz_projects(name)').eq('status','open').limit(50),
+        window.sb.from('kz_health_checks').select('*,kz_clients(name)').order('checked_at',{ascending:false}).limit(100)
+    ]);
+
+    aiContext = {
+        clients: allClients.map(c=>({name:c.name,code:c.short_code,url:c.platform_url,status:c.status,type:c.platform_type})),
+        openIncidents: incRes.data||[],
+        openTickets: tixRes.data||[],
+        activeProjects: projRes.data||[],
+        openTasks: taskRes.data||[],
+        openBugs: bugRes.data||[],
+        recentHealthChecks: hcRes.data||[],
+        modules: allModules.map(m=>({name:m.name,slug:m.slug,category:m.category,description:m.description}))
+    };
+}
+
+function addAIMessage(role, content, isLoading=false) {
+    const area = document.getElementById('aiChatArea');
+    if (!area) return;
+    const div = document.createElement('div');
+    div.style.cssText = `display:flex;gap:0.75rem;align-items:flex-start;${role==='user'?'flex-direction:row-reverse;':''}`;
+    const avatar = document.createElement('div');
+    avatar.style.cssText = `width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;${role==='user'?'background:rgba(99,102,241,0.2);':'background:linear-gradient(135deg,#6366f1,#4f46e5);'}`;
+    avatar.innerHTML = `<i class="fas ${role==='user'?'fa-user':'fa-robot'}" style="color:${role==='user'?'#a5b4fc':'white'};font-size:0.8rem;"></i>`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `max-width:75%;padding:0.75rem 1rem;border-radius:12px;font-size:0.875rem;line-height:1.6;${role==='user'?'background:rgba(99,102,241,0.15);color:#e2e8f0;border:1px solid rgba(99,102,241,0.2);':'background:rgba(255,255,255,0.04);color:#e2e8f0;border:1px solid rgba(255,255,255,0.08);'}`;
+    if (isLoading) {
+        bubble.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="color:#a5b4fc;"></i> Thinking...';
+        bubble.id = 'aiLoadingBubble';
+    } else {
+        bubble.innerHTML = content.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code style="background:rgba(99,102,241,0.15);padding:0.1rem 0.3rem;border-radius:4px;font-family:monospace;font-size:0.82rem;">$1</code>');
+    }
+    div.appendChild(avatar);
+    div.appendChild(bubble);
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+    return bubble;
+}
+
+async function sendAIMessage() {
+    const input = document.getElementById('aiInput');
+    if (!input) return;
+    const message = input.value.trim();
+    if (!message) return;
+    input.value = '';
+    await sendToAI(message);
+}
+
+async function aiQuick(prompt) {
+    await sendToAI(prompt);
+}
+
+async function sendToAI(userMessage) {
+    addAIMessage('user', userMessage);
+    addAIMessage('assistant', '', true);
+
+    aiMessages.push({role:'user', content: userMessage});
+
+    const systemPrompt = `You are KuzileOS AI Assistant — an expert software consultant and developer assistant for Kuzile Advisory, a South African software consultancy.
+
+You have access to the following live data from the KuzileOS management platform:
+
+CLIENTS:
+${JSON.stringify(aiContext?.clients||[], null, 2)}
+
+OPEN INCIDENTS (${aiContext?.openIncidents?.length||0}):
+${JSON.stringify(aiContext?.openIncidents?.slice(0,10)||[], null, 2)}
+
+OPEN SUPPORT TICKETS (${aiContext?.openTickets?.length||0}):
+${JSON.stringify(aiContext?.openTickets?.slice(0,10)||[], null, 2)}
+
+ACTIVE PROJECTS (${aiContext?.activeProjects?.length||0}):
+${JSON.stringify(aiContext?.activeProjects||[], null, 2)}
+
+OPEN TASKS (${aiContext?.openTasks?.length||0}):
+${JSON.stringify(aiContext?.openTasks?.slice(0,15)||[], null, 2)}
+
+OPEN BUGS (${aiContext?.openBugs?.length||0}):
+${JSON.stringify(aiContext?.openBugs?.slice(0,10)||[], null, 2)}
+
+SOFTWARE FACTORY MODULES (${aiContext?.modules?.length||0} available):
+${JSON.stringify(aiContext?.modules||[], null, 2)}
+
+TECH STACK: Vanilla JS, HTML5, Supabase (PostgreSQL + Auth + RLS), Vercel, Sentry, GitHub. All apps are single HTML files with embedded JS. No frameworks. Development done via Termux on Android using Python heredoc patches.
+
+Your role:
+- Help debug issues and suggest fixes
+- Generate SQL schema and HTML/JS code for new features
+- Analyse incidents, tickets and project status
+- Prioritise work and suggest next steps
+- Write professional client communications
+- Explain technical concepts clearly
+- Always provide actionable, specific advice
+- When generating code, use the existing patterns from the codebase (vanilla JS, same CSS variables, same Supabase query patterns)
+
+Be concise, practical and direct. Use **bold** for key points. Use code blocks for SQL and JS.`;
+
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-6',
+                max_tokens: 1000,
+                system: systemPrompt,
+                messages: aiMessages
+            })
+        });
+
+        const data = await response.json();
+        const loadingBubble = document.getElementById('aiLoadingBubble');
+        if (loadingBubble) loadingBubble.parentElement.remove();
+
+        if (data.content && data.content[0]) {
+            const reply = data.content[0].text;
+            aiMessages.push({role:'assistant', content: reply});
+            addAIMessage('assistant', reply);
+        } else {
+            addAIMessage('assistant', 'Sorry, I could not get a response. Please try again.');
+        }
+    } catch(e) {
+        const loadingBubble = document.getElementById('aiLoadingBubble');
+        if (loadingBubble) loadingBubble.parentElement.remove();
+        addAIMessage('assistant', 'Connection error: '+e.message+'. Make sure you are connected to the internet.');
+    }
+
+    const area = document.getElementById('aiChatArea');
+    if (area) area.scrollTop = area.scrollHeight;
+}
+
+function clearAIChat() {
+    aiMessages = [];
+    const area = document.getElementById('aiChatArea');
+    if (area) {
+        area.innerHTML = `<div style="text-align:center;padding:2rem 0;">
+            <div style="width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;box-shadow:0 8px 24px rgba(99,102,241,0.4);">
+                <i class="fas fa-robot" style="color:white;font-size:1.3rem;"></i>
+            </div>
+            <p style="font-weight:700;color:#a5b4fc;margin-bottom:0.4rem;">Conversation cleared</p>
+            <p style="font-size:0.82rem;color:rgba(255,255,255,0.3);">Start a new conversation below.</p>
+        </div>`;
+    }
 }
 
 checkSession();
