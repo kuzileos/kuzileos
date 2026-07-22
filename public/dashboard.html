@@ -2182,7 +2182,8 @@ Be concise, practical and direct. Use **bold** for key points. Use code blocks f
             aiMessages.push({role:'assistant', content: reply});
             addAIMessage('assistant', reply);
         } else {
-            addAIMessage('assistant', 'Sorry, I could not get a response. Please try again.');
+            const errMsg = data.error ? data.error.message||JSON.stringify(data.error) : JSON.stringify(data);
+            addAIMessage('assistant', 'API Error: '+errMsg);
         }
     } catch(e) {
         const loadingBubble = document.getElementById('aiLoadingBubble');
